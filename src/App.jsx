@@ -10,10 +10,23 @@ const DEFAULT_DATA = {
   achievements: [],
 }
 
+function migrate(data) {
+  return {
+    ...data,
+    achievements: (data.achievements || []).map(a => {
+      if (!a.startMonth) {
+        // Legacy: single `month` field — treat as a point-in-time completed achievement
+        return { ...a, startMonth: a.month || '', completedMonth: a.month || null }
+      }
+      return a
+    }),
+  }
+}
+
 function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? { ...DEFAULT_DATA, ...JSON.parse(raw) } : DEFAULT_DATA
+    return raw ? migrate({ ...DEFAULT_DATA, ...JSON.parse(raw) }) : DEFAULT_DATA
   } catch {
     return DEFAULT_DATA
   }

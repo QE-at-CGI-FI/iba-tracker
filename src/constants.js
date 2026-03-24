@@ -35,3 +35,10 @@ export function formatMonth(yearMonth) {
 export function currentYearMonth() {
   return new Date().toISOString().slice(0, 7)
 }
+
+export function formatDateRange(startMonth, completedMonth) {
+  const start = formatMonth(startMonth)
+  if (!completedMonth) return `${start} → ongoing`
+  if (startMonth === completedMonth) return start
+  return `${start} → ${formatMonth(completedMonth)}`
+}

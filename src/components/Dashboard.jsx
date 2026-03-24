@@ -1,4 +1,4 @@
-import { PERSON_COLORS, formatMonth, currentYearMonth } from '../constants.js'
+import { PERSON_COLORS, formatMonth, formatDateRange, currentYearMonth } from '../constants.js'
 
 function personColor(people, name) {
   const idx = people.indexOf(name)
@@ -133,9 +133,14 @@ export default function Dashboard({ data }) {
 
   const totalHours = entries.reduce((s, e) => s + e.hours, 0)
 
+  // In-progress first, then recently completed
   const recentAchievements = [...achievements]
-    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-    .slice(0, 3)
+    .sort((a, b) => {
+      const aDone = !!a.completedMonth, bDone = !!b.completedMonth
+      if (aDone !== bDone) return aDone ? 1 : -1
+      return (b.createdAt || 0) - (a.createdAt || 0)
+    })
+    .slice(0, 4)
 
   return (
     <div className="dashboard">
@@ -158,8 +163,13 @@ export default function Dashboard({ data }) {
         </div>
         <div className="stat-card accent">
           <div className="stat-icon">🏆</div>
-          <div className="stat-value">{achievements.length}</div>
-          <div className="stat-label">Achievements</div>
+          <div className="stat-value">{achievements.filter(a => a.completedMonth).length}</div>
+          <div className="stat-label">Completed</div>
+        </div>
+        <div className="stat-card in-progress">
+          <div className="stat-icon">🔄</div>
+          <div className="stat-value">{achievements.filter(a => !a.completedMonth).length}</div>
+          <div className="stat-label">In Progress</div>
         </div>
       </div>
 
@@ -189,12 +199,15 @@ export default function Dashboard({ data }) {
               <h2 className="section-title">Recent Achievements</h2>
               <div className="mini-achievements">
                 {recentAchievements.map(a => (
-                  <div key={a.id} className="mini-card">
+                  <div key={a.id} className={`mini-card${a.completedMonth ? '' : ' mini-in-progress'}`}>
                     <span className="mini-icon">{a.icon}</span>
-                    <div>
+                    <div className="mini-body">
                       <div className="mini-title">{a.title}</div>
-                      <div className="mini-meta">{formatMonth(a.month)} · {a.people.join(', ')}</div>
+                      <div className="mini-meta">
+                        {formatDateRange(a.startMonth, a.completedMonth)} · {a.people.join(', ')}
+                      </div>
                     </div>
+                    {!a.completedMonth && <span className="mini-badge">In Progress</span>}
                   </div>
                 ))}
               </div>

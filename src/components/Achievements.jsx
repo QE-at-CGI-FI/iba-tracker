@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ICONS, formatMonth, currentYearMonth } from '../constants.js'
+import { ICONS, formatDateRange, currentYearMonth } from '../constants.js'
 
 function newId() {
   return Math.random().toString(36).slice(2)
@@ -23,24 +23,41 @@ function IconPicker({ selected, onSelect }) {
   )
 }
 
-function AchievementCard({ achievement, people, onEdit, onDelete }) {
+function StatusBadge({ completedMonth }) {
+  return completedMonth
+    ? <span className="status-badge completed">✓ Completed</span>
+    : <span className="status-badge in-progress">● In Progress</span>
+}
+
+function AchievementCard({ achievement, onEdit, onDelete, onMarkComplete }) {
+  const done = !!achievement.completedMonth
   return (
-    <div className="achievement-card">
+    <div className={`achievement-card${done ? ' completed' : ' in-progress'}`}>
       <button className="card-delete" onClick={onDelete} title="Delete">×</button>
-      <div className="card-icon">{achievement.icon}</div>
+      <div className="card-top">
+        <span className="card-icon">{achievement.icon}</span>
+        <StatusBadge completedMonth={achievement.completedMonth} />
+      </div>
       <div className="card-title">{achievement.title}</div>
       {achievement.description && (
         <div className="card-desc">{achievement.description}</div>
       )}
+      <div className="card-date-range">
+        {formatDateRange(achievement.startMonth, achievement.completedMonth)}
+      </div>
       <div className="card-footer">
         <div className="card-people">
           {achievement.people.map(p => (
             <span key={p} className="person-badge">{p}</span>
           ))}
         </div>
-        <div className="card-date">{formatMonth(achievement.month)}</div>
       </div>
-      <button className="card-edit" onClick={onEdit}>Edit</button>
+      <div className="card-actions">
+        {!done && (
+          <button className="btn-complete" onClick={onMarkComplete}>Mark complete</button>
+        )}
+        <button className="card-edit" onClick={onEdit}>Edit</button>
+      </div>
     </div>
   )
 }
@@ -50,17 +67,19 @@ const BLANK = {
   description: '',
   icon: '🚀',
   people: [],
-  month: currentYearMonth(),
+  startMonth: currentYearMonth(),
+  completedMonth: '',
 }
 
 export default function Achievements({ data, update }) {
   const { people, achievements } = data
   const [showForm, setShowForm] = useState(false)
-  const [editing, setEditing] = useState(null) // achievement id
+  const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(BLANK)
+  const [filter, setFilter] = useState('all') // 'all' | 'in-progress' | 'completed'
 
   function openNew() {
-    setForm({ ...BLANK, month: currentYearMonth() })
+    setForm({ ...BLANK, startMonth: currentYearMonth() })
     setEditing(null)
     setShowForm(true)
   }
@@ -71,7 +90,8 @@ export default function Achievements({ data, update }) {
       description: achievement.description,
       icon: achievement.icon,
       people: achievement.people,
-      month: achievement.month,
+      startMonth: achievement.startMonth || '',
+      completedMonth: achievement.completedMonth || '',
     })
     setEditing(achievement.id)
     setShowForm(true)
@@ -94,22 +114,15 @@ export default function Achievements({ data, update }) {
   function submit(e) {
     e.preventDefault()
     if (!form.title.trim() || form.people.length === 0) return
-
+    const payload = {
+      ...form,
+      title: form.title.trim(),
+      completedMonth: form.completedMonth || null,
+    }
     if (editing) {
-      update({
-        achievements: achievements.map(a =>
-          a.id === editing ? { ...a, ...form, title: form.title.trim() } : a
-        ),
-      })
+      update({ achievements: achievements.map(a => a.id === editing ? { ...a, ...payload } : a) })
     } else {
-      update({
-        achievements: [...achievements, {
-          id: newId(),
-          createdAt: Date.now(),
-          ...form,
-          title: form.title.trim(),
-        }],
-      })
+      update({ achievements: [...achievements, { id: newId(), createdAt: Date.now(), ...payload }] })
     }
     closeForm()
   }
@@ -119,9 +132,32 @@ export default function Achievements({ data, update }) {
     update({ achievements: achievements.filter(a => a.id !== id) })
   }
 
-  const sorted = [...achievements].sort((a, b) =>
-    (b.month || '').localeCompare(a.month || '') || (b.createdAt || 0) - (a.createdAt || 0)
-  )
+  function markComplete(id) {
+    update({
+      achievements: achievements.map(a =>
+        a.id === id ? { ...a, completedMonth: currentYearMonth() } : a
+      ),
+    })
+  }
+
+  // Sort: in-progress first (by startMonth desc), then completed (by completedMonth desc)
+  const sorted = [...achievements].sort((a, b) => {
+    const aDone = !!a.completedMonth
+    const bDone = !!b.completedMonth
+    if (aDone !== bDone) return aDone ? 1 : -1
+    const aDate = aDone ? a.completedMonth : a.startMonth
+    const bDate = bDone ? b.completedMonth : b.startMonth
+    return (bDate || '').localeCompare(aDate || '')
+  })
+
+  const visible = sorted.filter(a => {
+    if (filter === 'in-progress') return !a.completedMonth
+    if (filter === 'completed')   return !!a.completedMonth
+    return true
+  })
+
+  const inProgressCount = achievements.filter(a => !a.completedMonth).length
+  const completedCount  = achievements.filter(a =>  a.completedMonth).length
 
   return (
     <div className="achievements-page">
@@ -129,6 +165,24 @@ export default function Achievements({ data, update }) {
         <h2 className="section-title">Achievements</h2>
         <button className="btn-primary" onClick={openNew}>+ New achievement</button>
       </div>
+
+      {achievements.length > 0 && (
+        <div className="filter-bar">
+          {[
+            { id: 'all',         label: `All (${achievements.length})` },
+            { id: 'in-progress', label: `🔄 In Progress (${inProgressCount})` },
+            { id: 'completed',   label: `✓ Completed (${completedCount})` },
+          ].map(f => (
+            <button
+              key={f.id}
+              className={`filter-btn${filter === f.id ? ' active' : ''}`}
+              onClick={() => setFilter(f.id)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Form modal */}
       {showForm && (
@@ -139,19 +193,17 @@ export default function Achievements({ data, update }) {
               <button className="modal-close" onClick={closeForm}>×</button>
             </div>
             <form className="achievement-form" onSubmit={submit}>
-              {/* Icon picker */}
               <div className="form-field">
                 <label>Icon</label>
                 <IconPicker selected={form.icon} onSelect={icon => setForm(f => ({ ...f, icon }))} />
               </div>
 
-              {/* Title */}
               <div className="form-field">
                 <label>Title <span className="required">*</span></label>
                 <input
                   type="text"
                   className="input"
-                  placeholder="What did the team accomplish?"
+                  placeholder="What is the team working toward?"
                   value={form.title}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                   required
@@ -159,12 +211,11 @@ export default function Achievements({ data, update }) {
                 />
               </div>
 
-              {/* Description */}
               <div className="form-field">
                 <label>Description</label>
                 <textarea
                   className="input textarea"
-                  placeholder="Tell the story…"
+                  placeholder="Tell the story of the effort…"
                   value={form.description}
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                   rows={3}
@@ -172,18 +223,31 @@ export default function Achievements({ data, update }) {
                 />
               </div>
 
-              {/* Month */}
-              <div className="form-field">
-                <label>Month</label>
-                <input
-                  type="month"
-                  className="input"
-                  value={form.month}
-                  onChange={e => setForm(f => ({ ...f, month: e.target.value }))}
-                />
+              <div className="form-row">
+                <div className="form-field">
+                  <label>Started <span className="required">*</span></label>
+                  <input
+                    type="month"
+                    className="input"
+                    value={form.startMonth}
+                    onChange={e => setForm(f => ({ ...f, startMonth: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="form-field">
+                  <label>Completed</label>
+                  <input
+                    type="month"
+                    className="input"
+                    value={form.completedMonth}
+                    onChange={e => setForm(f => ({ ...f, completedMonth: e.target.value }))}
+                    min={form.startMonth || undefined}
+                    placeholder="Leave blank if ongoing"
+                  />
+                  <span className="field-hint">Leave blank if still in progress</span>
+                </div>
               </div>
 
-              {/* People */}
               <div className="form-field">
                 <label>People <span className="required">*</span></label>
                 {people.length === 0 ? (
@@ -219,22 +283,23 @@ export default function Achievements({ data, update }) {
         </div>
       )}
 
-      {/* Cards grid */}
-      {sorted.length === 0 ? (
+      {visible.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">✨</div>
-          <h2>No achievements yet</h2>
-          <p>When your IBA time turns into something great, capture it here!</p>
+          <h2>{achievements.length === 0 ? 'No achievements yet' : 'Nothing here'}</h2>
+          <p>{achievements.length === 0
+            ? 'When your IBA time turns into something great, capture it here!'
+            : 'Try a different filter.'}</p>
         </div>
       ) : (
         <div className="cards-grid">
-          {sorted.map(a => (
+          {visible.map(a => (
             <AchievementCard
               key={a.id}
               achievement={a}
-              people={people}
               onEdit={() => openEdit(a)}
               onDelete={() => deleteAchievement(a.id)}
+              onMarkComplete={() => markComplete(a.id)}
             />
           ))}
         </div>
