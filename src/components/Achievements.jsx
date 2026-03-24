@@ -39,9 +39,6 @@ function AchievementCard({ achievement, onEdit, onDelete, onMarkComplete }) {
         <StatusBadge completedMonth={achievement.completedMonth} />
       </div>
       <div className="card-title">{achievement.title}</div>
-      {achievement.description && (
-        <div className="card-desc">{achievement.description}</div>
-      )}
       <div className="card-date-range">
         {formatDateRange(achievement.startMonth, achievement.completedMonth)}
       </div>
